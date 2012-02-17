@@ -1,56 +1,71 @@
 module Main where
-import Debug.Trace
-import Control.Monad
-import Control.Monad.ST
-import Control.Monad.State
-import Data.Array.ST
-import Data.Array.IO
-import Data.Array.Unboxed
 
-type Field = Array (Int,Int) Char
-type STField s = STUArray s (Int, Int) Char
-type IOField = IOUArray (Int,Int) Char
+import Control.Monad (forM_,when)
+import Control.Monad.ST (ST,runST)
+import Data.Array.ST (STUArray)
+import Data.Array.IO (freeze,thaw,writeArray,getBounds,readArray,newArray,IOUArray)
+import Data.Array.Unboxed (UArray,bounds,array)
+import Data.Ix (inRange,range)
+import Data.STRef (newSTRef,readSTRef,writeSTRef)
+
 type Point = (Int,Int)
+type Field = UArray Point Char
+type STField s = STUArray s Point Char
+type IOField = IOUArray Point Char
 
 main = do
   n <- getInt
   m <- getInt
-  field <- newArray ((1,1),(n,m)) ' ' :: IO IOField
+  let r = ((1,1),(n,m))
+  field <- newArray r ' ' :: IO IOField
   forM_ [1..n] $ \x -> do
     forM_ [1..m] $ \y -> do
       c <- getChar
       writeArray field (x,y) c
     getChar
   f <- freeze field
-  print $ solve f
+  print . solve $ f
   where
     getInt :: IO Int
     getInt = fmap read $ getLine
 
-
-dfs :: Field -> Point -> Field
-dfs f (x,y) = round $ f // [((x,y), '.')]
+-- もどり値にSTがつくように配列の値を書き換える操作がある
+dfs :: STField s -> Point -> ST s ()
+dfs f p@(x,y) = do
+  writeArray f p '.'
+  b <- getBounds f
+  forM_ r $ \p1 -> do
+    when (not $ isSame p1) $ do
+      when (inRange b p1) $ do
+        c <- readArray f p1
+        when (isWater c) $ do
+          dfs f p1
   where
-    ((xs,ys),(xe,ye)) = bounds f
-    inRange x y = (x >= xs && x <= xe && y >= ys && y <= ye)
-    isSame x1 y1 = x == x1 && y == y1
-    ixs = [(x1,y1)| x1 <- [x-1,x,x+1],
-           y1 <- [y-1,y,y+1],
-           not (isSame x1 y1) && inRange x1 y1 && isWater (f ! (x1,y1))]
-    round f' = foldr (\p f'' -> dfs f'' p) f' ixs
+    isSame (x',y') = x == x' && y == y'
+    r = range ((x-1,y-1),(x+1,y+1))
 
+-- 破壊的な操作をするが、その影響は外には出さない。
+-- 一度だけ配列全体のコピーを行なう(thaw)
 solve :: Field -> Int
-solve f = case foldr solve' (f,0) xys of (_,r) -> r
-  where
-    ((xs,ys),(xe,ye)) = bounds f
-    xys = [(x,y)| x <- [xs..xe],y  <- [ys..ye]]
-    solve' :: (Int,Int) -> (Field,Int) -> (Field,Int)
-    solve' (x,y) (f,r) = if isWater $ f ! (x,y)
-                     then (dfs f (x,y),r+1)
-                     else (f,r)
+solve field = runST $ do
+      f <- thaw field :: ST s (STField s)
+      solve' f
+        where
+          solve' :: STField s -> ST s Int
+          solve' f = do
+            ref <- newSTRef 0
+            forM_ r $ \p -> do
+              c <- readArray f p
+              when (isWater c) $ do
+                dfs f p
+                x <- readSTRef ref
+                writeSTRef ref (x+1)
+            readSTRef ref
+          r = range $ bounds $ field
 
 isWater :: Char -> Bool
 isWater = (=='W')
 
+-- サンプルデータ
 ar :: Field
 ar = array ((1,1),(2,2)) [((1,1), 'W'),((2,2), 'W')]
