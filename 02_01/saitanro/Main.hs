@@ -33,7 +33,7 @@ main = do
     getInt :: IO Int
     getInt = read <$> getLine
 
-distances = [(-1,0),(0,-1),(1,0),(0,1)]
+routes = [(-1,0),(0,-1),(1,0),(0,1)]
 
 bfs :: Maze -> STMaze s -> Seq (Point,Int) -> ST s Int
 bfs maze solv queue = case viewl queue of
@@ -43,6 +43,7 @@ bfs maze solv queue = case viewl queue of
     then next
     else bfs'
     where
+      addQueue (((x,y),d),(dx,dy)) queue = queue |> ((x+dx,y+dy),d+1)
       next = bfs maze solv queue
       c = maze ! n
       bfs' | isGoal c = return d
@@ -51,12 +52,11 @@ bfs maze solv queue = case viewl queue of
              visited <- readArray solv n
              if visited == (-1)
                then do
-               let queue' = (foldr addQueue queue $ Prelude.zip (repeat (n,d)) distances)
+               let queue' = foldr addQueue queue $ zip (repeat (n,d)) routes
                writeArray solv n d
                bfs maze solv queue'
                else next
-  where
-    addQueue (((x,y),d),(dx,dy)) queue = queue |> ((x+dx,y+dy),d+1)
+
 
 solve :: Maze -> Point -> Int
 solve maze start = runST $ do
