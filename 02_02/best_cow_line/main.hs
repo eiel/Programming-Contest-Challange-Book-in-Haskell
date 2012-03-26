@@ -4,7 +4,6 @@ import Data.Sequence as S
 import Control.Applicative
 import Control.Monad
 
-type Length = Int
 type Word = Seq Char
 
 main = do
